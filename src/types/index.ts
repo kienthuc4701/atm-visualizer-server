@@ -9,7 +9,7 @@ export enum ATMStateType {
 
 export type AccountType = {
   id:string,
-  cardNumber: string,
   pin:string,
   balance:number,
+  name: string
 }

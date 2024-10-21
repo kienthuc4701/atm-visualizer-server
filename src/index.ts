@@ -1,25 +1,15 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { login } from "./routes";
 
-import ATM from "./model/ATM";
+interface Env {
+    assets: KVNamespace;
+}
 
-const app = new Hono();
-app.use(cors({ origin: "http://localhost:5173" }));
+const app = new Hono<{Bindings: Env}>();
+app.use(cors({ origin: ["http://localhost:5173"], credentials: true }));
 
-const atm = new ATM();
+app.post("/login", login);
 
-app.get("/accounts/:card-number", (c) => {
-  const cardNumber = c.req.param("card-number");
-
-  const account = atm.insertCard(cardNumber);
-
-  return c.json({ ...account });
-});
-
-app.post("/validate-pin", async (c) => {
-  const {pin} = await c.req.json();
-  const isValid = atm.enterPin(atm.getAccount()! ,pin);
-  return c.json(isValid);
-});
 
 export default app;
