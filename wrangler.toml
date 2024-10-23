@@ -3,8 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2024-10-18"
 compatibility_flags = [ "nodejs_compat" ]
 
-# [vars]
-# MY_VAR = "my-variable"
+[vars]
+JWT_SECRET = "y0uR_s3CR3t_k3Y"
+DOMAIN = "localhost"
 
 [[kv_namespaces]]
 binding = "assets"
