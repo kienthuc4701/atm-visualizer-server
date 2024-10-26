@@ -1,14 +1,18 @@
-import { Hono } from "hono";
+import {Hono } from "hono";
 import { cors } from "hono/cors";
-import { checkBalance, login, refreshToken, withdraw } from "./routes";
 import { jwt } from "hono/jwt";
+import { login, refreshToken } from "./auth";
+import { checkBalance, withdraw } from "./routes";
 
-interface Env {
-  assets: KVNamespace;
-  JWT_SECRET: string;
+export type Env = {
+  Bindings: {
+    KV: KVNamespace
+    JWT_SECRET: string;
+  }
 }
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<Env>();
+
 app.use(cors({ origin: ["http://localhost:5173"], credentials: true }));
 app.use("/auth/*", (c, next) => {
   const jwtMiddleware = jwt({
@@ -22,7 +26,7 @@ app.use("/auth/*", (c, next) => {
   return jwtMiddleware(c, next);
 });
 
-app.post("/login", login);
+app.post("/login",login)
 app.get("/auth/balance", checkBalance);
 app.put("/auth/withdraw", withdraw);
 app.post("/auth/refresh-token", refreshToken);

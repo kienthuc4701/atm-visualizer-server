@@ -1,48 +1,93 @@
+import { Context } from "hono";
+import { setSignedCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
-import { jwt, sign, verify } from "hono/jwt";
+import { sign, verify } from "hono/jwt";
 
-const JWT_SECRET = "y0uR_s3CR3t_k3Y";
-const ACCESS_TOKEN_EXPIRY = 5;
-const REFRESH_TOKEN_EXPIRY = 7;
+export const generateToken = async (payload: any, secret: string): Promise<string> => {
+  return sign(payload, secret, "HS256");
+};
 
-export async function generateTokens(userId: string) {
-  const accessTokenPayload = {
-    id: userId,
-    exp: Math.floor(Date.now() / 1000) + 60 * ACCESS_TOKEN_EXPIRY,
-  };
-  const refreshTokenPayload = {
-    id: userId,
-    exp: Math.floor(Date.now() / 1000) + 60 * 24 * REFRESH_TOKEN_EXPIRY,
-    type: "refresh",
-  };
-
-  const accessToken = await sign(accessTokenPayload, JWT_SECRET, "HS256");
-  const refreshToken = await sign(refreshTokenPayload, JWT_SECRET, "HS256");
-  return { accessToken, refreshToken };
-}
-
-export async function verifyAccessToken(token: string) {
+export const verifyToken = async (token: string, secret: string): Promise<any> => {
   try {
-    return await verify(token, JWT_SECRET);
+    return verify(token, secret, "HS256");
   } catch (error) {
-    throw new HTTPException(401, { message: "Invalid or expired token" });
+    return null; // Token is not valid
   }
-}
+};
 
-export async function verifyRefreshToken(token: string) {
+export const refreshToken = async (c: Context) => {
+  const kvStore = c.env.KV
   try {
-    const payload = await verify(token, JWT_SECRET);
-    if (payload.type !== "refresh") {
-      throw new Error("Not a refresh token");
+    const { cardNumber } = await c.req.json();
+    const { refreshToken: storedRefreshToken } = await kvStore.get(
+      cardNumber,
+      "json"
+    );
+
+    if (!cardNumber || !storedRefreshToken)
+      throw new HTTPException(401, { message: "Unauthorized" });
+
+    await verifyToken(storedRefreshToken, c.env.JWT_SECRET);
+
+    const payload = {
+      sub: cardNumber,
+      exp: Math.floor(Date.now() / 1000) + 60 * 1,
+    }; // Token expires in 10 minutes
+    const newAccessToken = await generateToken(payload, c.env.JWT_SECRET);
+
+    await setSignedCookie(c, "accessToken", newAccessToken, c.env.JWT_SECRET);
+
+    return c.json({ status: 200 });
+  } catch (error: any) {
+    if (error.name === "JwtTokenExpired")
+      throw new HTTPException(401, {
+        message: "Unauthorized",
+      });
+    throw new HTTPException(500, { message: "Internal Server Error" });
+  }
+};
+
+export const login = async (c: Context) => {
+  try {
+    const { cardNumber, pin } = await c.req.json();
+    // Proceed with normal login process
+    const user = await c.env.KV.get(cardNumber, "json");
+    if (!user || user.pin !== pin) {
+      throw new HTTPException(401, { message: "Unauthorized" });
     }
-    return payload;
-  } catch (error) {
-    throw new HTTPException(401, {
-      message: "Invalid or expired refresh token",
-    });
-  }
-}
 
-export const jwtMiddleware = jwt({
-  secret: JWT_SECRET,
-});
+    const payload = {
+      sub: cardNumber,
+      exp: Math.floor(Date.now() / 1000) + 60 * 5,
+    }; // Token expires in 5 minutes
+    const newAccessToken = await generateToken(payload, c.env.JWT_SECRET);
+    const refreshTokenPayload = {
+      ...payload,
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+    }; // Refresh token expires in 7 days
+    const newRefreshToken = await generateToken(
+      refreshTokenPayload,
+      c.env.JWT_SECRET
+    );
+
+    // Update refreshToken in the database
+    await c.env.KV.put(
+      cardNumber,
+      JSON.stringify({ ...user, refreshToken: newRefreshToken })
+    );
+
+    // Set access token in cookie
+    setSignedCookie(c, "accessToken", newAccessToken, c.env.JWT_SECRET, {
+      httpOnly: true,
+      path: "/",
+      sameSite: "strict",
+      secure: true,
+    });
+    return c.json({ message: "Login successful!" });
+  } catch (error: any) {
+    if (error.name === "JwtTokenExpired") {
+      throw new HTTPException(401, { message: "Unauthorized" });
+    }
+    throw new HTTPException(500, { message: "Internal Server Error" });
+  }
+};

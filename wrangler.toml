@@ -8,7 +8,7 @@ JWT_SECRET = "y0uR_s3CR3t_k3Y"
 DOMAIN = "localhost"
 
 [[kv_namespaces]]
-binding = "assets"
+binding = "KV"
 id = "c413d8810d0940f5a7050847631f9b62"
 preview_id = "e01d836174534082ba199ba1d2a54de2"
 
